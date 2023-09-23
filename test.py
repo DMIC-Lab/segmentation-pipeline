@@ -1,10 +1,10 @@
 from pipeline import segmentationPipeline
 import nibabel as nib
 import numpy as np
+import napari
 
 pipeline = segmentationPipeline("cuda:0")
-testImage = nib.load("./10032T_EXP_image.nii.gz").get_fdata()
-testImage = 1+ testImage / 1000
-testImage = np.clip(testImage,0,1) * 255
-testImage = testImage.astype(np.uint8)
-pipeline.segment(testImage)
+testImage = np.load('test.npy')
+output = pipeline.segment(originalImage=testImage).squeeze(0).squeeze(0).cpu().numpy()
+napari.view_image(output,colormap='gist_earth',contrast_limits=(0,5))
+napari.run()
