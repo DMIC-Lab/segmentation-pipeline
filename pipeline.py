@@ -4,14 +4,19 @@ from utils import *
 import numpy as np
 
 class segmentationPipeline:
-    def __init__(self,device,weightPathOverrides = None):
-        if weightPathOverrides is not None:
-            self.coarseModelPath, self.LRModelPath, self.rightModelPath, self.leftModelPath = weightPathOverrides
-        else:
-            self.coarseModelPath = "./weights/coarse.pth"
-            self.LRModelPath = "./weights/lr.pth"
-            self.rightModelPath = "./weights/right.pth"
-            self.leftModelPath = "./weights/left.pth"
+    def __init__(self,device,weightPathOverrides = [None,None,None,None]):
+        self.coarseModelPath = "./weights/coarse.pth"
+        self.LRModelPath = "./weights/lr.pth"
+        self.rightModelPath = "./weights/right.pth"
+        self.leftModelPath = "./weights/left.pth"
+        if weightPathOverrides[0] is not None:
+            self.coarseModelPath = weightPathOverrides[0]
+        if weightPathOverrides[1] is not None:
+            self.LRModelPath = weightPathOverrides[1]
+        if weightPathOverrides[2] is not None:
+            self.rightModelPath = weightPathOverrides[2]
+        if weightPathOverrides[3] is not None:
+            self.leftModelPath = weightPathOverrides[3]
         self.coarseModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=2, feature_size=12)
         self.coarseModel.load_state_dict(torch.load(self.coarseModelPath))
         self.coarseModel.eval()
@@ -46,15 +51,18 @@ class segmentationPipeline:
             pass
         else:
             raise ValueError("Input must be 3D, 4D, or 5D tensor")
+        
 
 
         originalImage = originalImage.to(self.device)
-        coarseImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest')    
+        originalImage = originalImage / (torch.max(originalImage) / 255)
+
+        coarseImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest') / 255
         #Segment lung - coarse model outputs binary mask of what is lung and not
         coarseOutput = torchGetModelOutput(coarseImage,self.coarseModel)
         
-        bodyMask = torchMorphology(coarseImage)
-        coarseOutput = torch.where(bodyMask > 0,coarseOutput,0)
+        # bodyMask = torchMorphology(coarseImage)
+        # coarseOutput = torch.where(bodyMask > 0,coarseOutput,0)
         coarseOutput = pytorchGetLargest(coarseOutput,num=2) #HWD
         
         coarseBounds128 = torchbbox2_3D(coarseOutput)
