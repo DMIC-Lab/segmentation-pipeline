@@ -6,7 +6,21 @@ This Python module provides a simple-to-use interface for lung segmentation task
 
 - Python
 - PyTorch
-- Numpy 
+- Numpy
+- Monai
+- Connected Components Labeling for Pytorch
+
+## Installing Requirements
+Make a new environment and then install the following packages
+pip install nibabel numpy napari scikit-image napari[all]
+
+Install torch (https://pytorch.org/get-started/locally/)
+pip install monai[einops]
+
+git clone https://github.com/zsef123/Connected_components_PyTorch
+cd Connected_components_Pytorch
+pip install .
+
 
 ## Quickstart Guide
 
@@ -28,7 +42,7 @@ You can initialize the pipeline by passing a PyTorch device, and optionally, the
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Optionally specify custom model weight paths
-weight_paths = ['coarsePath', 'LRPath', 'leftPath', 'rightPath']
+weight_paths = ['LRPath', 'leftPath', 'rightPath']
 
 pipeline = segmentationPipeline(device, weight_paths)
 ```
@@ -64,6 +78,5 @@ result_cast_LR = pipeline.segment(input_image, getLR=2)
 - `segment(image, getLR)`: Segments the given image.
   - `image`: Input image as a PyTorch tensor or a Numpy array.
   - `getLR`: Determines the type of segmentation.
-    - `0`: Lobe segmentation
-    - `1`: Rough left-right lung segmentation
-    - `2`: Lobe segmentation cast down to left and right lung
+    - `False`: Lobe Segmentation
+    - `True`: Left/Right Segmentation

@@ -4,40 +4,35 @@ from utils import *
 import numpy as np
 
 class segmentationPipeline:
-    def __init__(self,device,weightPathOverrides = [None,None,None,None]):
-        self.coarseModelPath = "./weights/coarse.pth"
-        self.LRModelPath = "./weights/lr.pth"
-        self.rightModelPath = "./weights/right.pth"
-        self.leftModelPath = "./weights/left.pth"
+    def __init__(self,device,weightPathOverrides = [None,None,None]):
+        self.LRModelPath = "./weights/lr.pt"
+        self.rightModelPath = "./weights/right.pt"
+        self.leftModelPath = "./weights/left.pt"
         if weightPathOverrides[0] is not None:
-            self.coarseModelPath = weightPathOverrides[0]
+            self.LRModelPath = weightPathOverrides[0]
         if weightPathOverrides[1] is not None:
-            self.LRModelPath = weightPathOverrides[1]
+            self.rightModelPath = weightPathOverrides[1]
         if weightPathOverrides[2] is not None:
-            self.rightModelPath = weightPathOverrides[2]
-        if weightPathOverrides[3] is not None:
-            self.leftModelPath = weightPathOverrides[3]
-        self.coarseModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=2, feature_size=12)
-        self.coarseModel.load_state_dict(torch.load(self.coarseModelPath))
-        self.coarseModel.eval()
-        self.LRModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=12)
+            self.leftModelPath = weightPathOverrides[2]
+        self.LRModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=24)
         self.LRModel.load_state_dict(torch.load(self.LRModelPath))
         self.LRModel.eval()
-        self.rightModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=4, feature_size=12)
+        self.rightModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=4, feature_size=24)
         self.rightModel.load_state_dict(torch.load(self.rightModelPath))
         self.rightModel.eval()
-        self.leftModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=12)
+        self.leftModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=24)
         self.leftModel.load_state_dict(torch.load(self.leftModelPath))
         self.leftModel.eval()
         self.device = device
-        self.coarseModel.to(self.device)
         self.LRModel.to(self.device)
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0):
+    def segment(self,originalImage, getLR = False,takeLargest=False):
+        originalType = None
         if isinstance(originalImage, np.ndarray):
-            originalImage = torch.from_numpy(originalImage).float()
+            originalImage = torch.from_numpy(np.array(originalImage)).float()
+            originalType = 'np'
         elif isinstance(originalImage, torch.Tensor):
             originalImage = originalImage.float()
         else:
@@ -52,48 +47,40 @@ class segmentationPipeline:
         else:
             raise ValueError("Input must be 3D, 4D, or 5D tensor")
         
-
-
         originalImage = originalImage.to(self.device)
-        originalImage = originalImage / (torch.max(originalImage) / 255)
+        originalImage = (originalImage - torch.min(originalImage)) / (torch.max(originalImage) - torch.min(originalImage))
 
-        coarseImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest') / 255
-        #Segment lung - coarse model outputs binary mask of what is lung and not
-        coarseOutput = torchGetModelOutput(coarseImage,self.coarseModel)
-        
-        # bodyMask = torchMorphology(coarseImage)
-        # coarseOutput = torch.where(bodyMask > 0,coarseOutput,0)
-        coarseOutput = pytorchGetLargest(coarseOutput,num=2) #HWD
-        
-        coarseBounds128 = torchbbox2_3D(coarseOutput)
-        coarseBounds = torchRescaleBounds(coarseBounds128,originalImage.shape,coarseOutput.shape)
-        coarseCropped = torchCrop(originalImage,coarseBounds)
+        lrImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest')
         
         #Segment LR - LR model outputs mask of what is left and right lung
-        LRInput = torchPrep(coarseCropped) #HWD -> NCHWD
+        LRInput = torchPrep(lrImage) #HWD -> NCHWD
         LROutput = torchGetModelOutput(LRInput,self.LRModel)
-        print('lr')
-        LROutput = pytorchGetLargest(LROutput,num=2)
-        LRFullSizeMask = torch.zeros(originalImage.shape).cuda()
-        LRCoarseSize = torch.nn.functional.interpolate(LROutput,size=coarseCropped.shape[2:],mode='nearest-exact')
-        LRFullSizeMask[:,:,coarseBounds[0]:coarseBounds[1],coarseBounds[2]:coarseBounds[3],coarseBounds[4]:coarseBounds[5]] = LRCoarseSize
-        if getLR == 1:
-            return LRFullSizeMask
+        LROutput = torchDust(LROutput,threshold=1000,takeLargest=takeLargest)
+        LROutput = torch.nn.functional.interpolate(LROutput, size=originalImage.shape[2:], mode='nearest')
         
+
+        if getLR:
+            if originalType == 'np':
+                return LROutput.squeeze(0).squeeze(0).cpu().numpy()
+
+            return LROutput
+
+        originalImage *= 255
+
         leftOutput = torch.where(LROutput==1,1,0)
         rightOutput = torch.where(LROutput==2,1,0)
-        leftOutput = pytorchGetLargest(leftOutput,num=1)
-        rightOutput = pytorchGetLargest(rightOutput,num=1)
-        leftBounds128 = torchbbox2_3D(leftOutput,margin=1)
-        rightBounds128 = torchbbox2_3D(rightOutput,margin=1)
-        leftCoarseBounds = torchRescaleBounds(leftBounds128,coarseCropped.shape,leftOutput.shape)
-        rightCoarseBounds = torchRescaleBounds(rightBounds128,coarseCropped.shape,rightOutput.shape)
-        leftBounds = fitInBounds(leftCoarseBounds,coarseBounds)
-        rightBounds = fitInBounds(rightCoarseBounds,coarseBounds)
+        leftBounds = torchbbox2_3D(leftOutput,margin=1)
+        rightBounds = torchbbox2_3D(rightOutput,margin=1)
         leftCropped = torchCrop(originalImage,leftBounds)
         rightCropped = torchCrop(originalImage,rightBounds)
-        LRFullSizeMask = torch.where(LRFullSizeMask > 0,1,0)
-        LRMaskDilated = pytorchBinaryDilation(LRFullSizeMask)
+
+        # debug = torch.zeros(originalImage.shape).cuda()
+        # debug[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = 255
+        # debug[:,:,rightBounds[0]:rightBounds[1],rightBounds[2]:rightBounds[3],rightBounds[4]:rightBounds[5]] = 255
+        # debug = debug.to(torch.uint8).squeeze(0).squeeze(0)
+        # debug = debug.cpu().numpy()
+        # return debug
+
 
 
 
@@ -111,6 +98,13 @@ class segmentationPipeline:
         rightLobeOutput = rightLobeOutput + 2
         rightLobeOutput = torch.where(rightLobeOutput==2,0,rightLobeOutput)
         
+        temp = torch.zeros_like(leftLobeOutput)
+        temp[:,:,:-1,:-1,:-1] = leftLobeOutput[:,:,1:,1:,1:]
+        leftLobeOutput = temp
+        temp = torch.zeros_like(rightLobeOutput)
+        temp[:,:,:-1,:-1,:-1] = rightLobeOutput[:,:,1:,1:,1:]
+        rightLobeOutput = temp
+
         #Assemble final mask
         finalMask = torch.zeros(originalImage.shape).cuda()
         leftFullSize = torch.zeros(originalImage.shape).cuda()
@@ -120,18 +114,29 @@ class segmentationPipeline:
         finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
         finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
 
-        finalMask = torch.where(LRMaskDilated > 0,finalMask,0)
+        unevenShape = [False,False,False]
+        if finalMask.shape[2] % 2 != 0:
+            unevenShape[0] = True
+        if finalMask.shape[3] % 2 != 0:
+            unevenShape[1] = True
+        if finalMask.shape[4] % 2 != 0:
+            unevenShape[2] = True
+        shape = list(finalMask.shape)
+        for i in range(3):
+            if unevenShape[i]:
+                shape[i+2] += 1
+        finalMask = torch.nn.functional.interpolate(finalMask, size=shape[2:], mode='nearest-exact')
+
+            
+            
+        finalMask = torchErrors(finalMask)
+        finalMask = torchDust(finalMask)
+        finalMask = torchSmoothing(finalMask)
+        finalMask = torch.nn.functional.interpolate(finalMask, size=originalImage.shape[2:], mode='nearest-exact')
 
         finalMask = finalMask.to(torch.uint8)
-
-        if getLR == 2:
-            LRFinalMask = torch.where(torch.logical_or(LRFullSizeMask==1,LRFullSizeMask==2),1,0)
-            LRFinalMask = torch.where(torch.logical_or(LRFinalMask==3,LRFinalMask==4,LRFinalMask==5),2,LRFinalMask)
-            return LRFinalMask
+        
+        # if originalType == 'np':
+        #     return finalMask.squeeze(0).squeeze(0).cpu().numpy()
 
         return finalMask
-                
-
-
-
-

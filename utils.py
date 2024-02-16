@@ -46,17 +46,17 @@ def torchGetModelOutput(input,model):
         output = torch.argmax(output,dim=1).unsqueeze(0)
     return output.to(torch.uint8)
 
-def pytorchBinaryErosion(tensor):
-    ball = morphology.ball(2)
+def pytorchBinaryErosion(tensor, selem_radius=3):
+    ball = morphology.ball(selem_radius)
     struct_elem = torch.tensor(ball, dtype=torch.float32)
     struct_elem = struct_elem.view(1, 1, *struct_elem.size()).cuda()
 
     # Perform 3D convolution with structuring element
-    conv_result = torch.nn.functional.conv3d(tensor.float(), struct_elem, padding=2)
+    conv_result = torch.nn.functional.conv3d(tensor.float(), struct_elem, padding=selem_radius)
 
     # Binary erosion is equivalent to finding where the convolution result
     # is equal to the sum of the structuring element
-    erosion_result = (conv_result == struct_elem.sum().item()).float()
+    erosion_result = conv_result == struct_elem.sum().item()
     return erosion_result
 
 def torchMorphology(smallTensor):
@@ -86,7 +86,6 @@ def torchbbox2_3D(img,margin=5):
     return int(xmin), int(xmax), int(ymin), int(ymax), int(zmin), int(zmax)
 
 def torchPrep(image):
-    print(image.shape)
     image = torch.nn.functional.interpolate(image,size=(128,128,128),mode='nearest')
     return image
 
@@ -100,7 +99,7 @@ def pytorchBinaryDilation(tensor, selem_radius=3):
 
     # Binary dilation is equivalent to finding where the convolution result
     # is greater than 0
-    dilation_result = (conv_result > 0).float()
+    dilation_result = conv_result > 0
 
     return dilation_result
 
@@ -139,3 +138,149 @@ def fitInBounds(rescaledBounds, intermediateImageBounds):
     finalBounds[5] = rescaledBounds[5] + intermediateImageBounds[4]
     
     return finalBounds
+
+def multiLabelCC(arr):
+    ccs = torch.zeros([len(arr.unique()),*arr.shape],dtype=torch.uint8,device=arr.device)
+    for i,component in enumerate(arr.unique()):
+        ccs[i] = connected_components_labeling((arr==component).to(torch.uint8))
+    cc = torch.zeros_like(arr,device=arr.device)
+    vals = [1,3,5,7,9,11]
+    for i in range(len(arr.unique())):
+        cc += ccs[i]*(vals[i])
+
+
+    return cc
+
+def torchDust(arr,threshold=3000,takeLargest=False):
+    originalShapeLen = len(arr.shape)
+    if originalShapeLen > 3:
+        for i in range(originalShapeLen-3):
+            arr = arr.squeeze(0)
+    dusted = torch.zeros_like(arr,device=arr.device)
+    cc = multiLabelCC(arr)
+    if takeLargest:
+        largestDict = {val.item():0 for val in arr.unique()}
+        componentDict = {val.item():None for val in arr.unique()}
+
+    totalCount = 0
+    for component in cc.unique():
+        
+        count = torch.sum(cc == component).item()
+        if count < threshold:
+            totalCount += count
+            continue
+        if takeLargest:
+            if largestDict[arr[cc == component][0].item()] < count:
+                largestDict[arr[cc == component][0].item()] = count
+                componentDict[arr[cc == component][0].item()] = component
+                #dusted[cc == component] = arr[cc == component]
+            else:
+                totalCount += count
+        else:
+            dusted[cc == component] = arr[cc == component]
+    if takeLargest:
+        for key, val in componentDict.items():
+            if val is not None:
+                dusted[cc == val] = key
+            else:
+                print(componentDict)
+                print('failed')
+                return None
+    for i in range(originalShapeLen-3):
+        dusted = dusted.unsqueeze(0)
+    return dusted
+    
+
+def torchErrors(arr,threshold=3000,takeLargest=False):
+    originalShape = arr.shape[2:]
+    newShape = [val-1 if val > 1 and val%2 != 0 else val for val in originalShape]
+    arr = torch.nn.functional.interpolate(arr,size=newShape,mode='nearest')
+    arr = arr.squeeze(0).squeeze(0).to(torch.uint8)
+    arrDusted = torchDust(arr,threshold=threshold,takeLargest=takeLargest)
+    if arrDusted is None:
+        return None
+    errors = torch.logical_xor(arrDusted,arr)
+    isolatedErrors = torch.where(errors,arr,0)
+    isolatedErrorCC = multiLabelCC(isolatedErrors)
+    for id in torch.unique(isolatedErrorCC):
+        
+        region = torch.where(isolatedErrorCC==id,arr,0).to(torch.bool)
+        if torch.sum(region).item() > 100000:
+            continue
+        dilatedRegion = pytorchBinaryDilation(region.unsqueeze(0).unsqueeze(0),selem_radius=3).squeeze(0).squeeze(0)
+        boundary = torch.logical_and(dilatedRegion, torch.logical_not(region))
+        boundary = torch.where(boundary,arr,0)
+        regionVals = torch.where(region,arr,0)
+        boundaryUnique = set([val.item() for val in boundary.unique()])
+        regionUnique = set([val.item() for val in regionVals.unique()])
+        uniqueLabels = boundaryUnique.difference(regionUnique)
+        
+        if len(uniqueLabels) == 1:
+            arr = torch.where(region,list(uniqueLabels)[0],arr)
+            #viewer.add_image(arr.cpu().squeeze(0).squeeze(0).numpy(),name='corrected',colormap="gist_earth",contrast_limits=(0,5))
+        elif len(uniqueLabels) == 0:
+            arr = torch.where(region,0,arr)
+        else:
+            sizes = {val:torch.sum(boundary==val).item() for val in uniqueLabels if val != 0}
+            largest = max(sizes, key=sizes.get)
+            arr = torch.where(region,largest,arr)
+    arr = torch.nn.functional.interpolate(arr.unsqueeze(0).unsqueeze(0).float(),size=originalShape,mode='nearest')
+    return arr
+
+# def edge_rounding(finalMask):
+    
+#     # create newMask w/ same shape of finalMask filled with zeroes
+#     newMask = np.zeros_like(finalMask, np.uint8)
+
+#     # taking a 2D matrix of size (1, 1) as the kernel
+#     kernel = np.ones((1, 1), np.uint8)
+    
+#     # extract each lobe
+#     for i in range(6):
+#         # separate background
+#         if i == 0:
+#             continue
+
+#         # get binary mask of current lobe
+#         binaryMask = (finalMask == i).astype(np.uint8)
+
+#         # initialize an empty 3D array for dilated and eroded masks
+#         erodedMask = np.zeros_like(binaryMask)
+
+#         # iterate over each 2D slice along the third dimension
+#         for j in range(binaryMask.shape[2]):
+#             # dilate and erode
+#             erodedMask = cv2.dilate(binaryMask, kernel, iterations=1)
+#             erodedMask = cv2.dilate(binaryMask, kernel, iterations=1)
+#             erodedMask = cv2.dilate(binaryMask, kernel, iterations=1)
+#             erodedMask = cv2.erode(binaryMask, kernel, iterations=1)
+#             erodedMask = cv2.erode(binaryMask, kernel, iterations=1)
+#             erodedMask = cv2.erode(binaryMask, kernel, iterations=1)
+#             print(j)
+
+#         #set new mask to value of current lobe
+#         newMask += i * erodedMask
+
+#     return newMask
+
+def torchSmoothing(finalMask):
+
+    newMask = torch.zeros_like(finalMask, dtype=torch.uint8)
+
+    for i in range(6):
+        if i == 0:
+            continue
+
+        binaryMask = (finalMask == i).to(torch.uint8)
+
+        erodedMask = torch.zeros_like(binaryMask)
+
+        #for j in range(binaryMask.shape[2]):
+        erodedMask = pytorchBinaryDilation(binaryMask, selem_radius=1)
+        erodedMask = pytorchBinaryDilation(erodedMask, selem_radius=1)
+        erodedMask = pytorchBinaryDilation(erodedMask, selem_radius=1)
+        erodedMask = pytorchBinaryErosion(erodedMask, selem_radius=1)
+        erodedMask = pytorchBinaryErosion(erodedMask, selem_radius=1)
+        erodedMask = pytorchBinaryErosion(erodedMask, selem_radius=1)
+        newMask = torch.where(erodedMask > 0, i, newMask)
+    return newMask
