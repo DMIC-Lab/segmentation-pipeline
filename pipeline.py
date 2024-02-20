@@ -1,6 +1,6 @@
 import torch
 from monai.networks.nets import SwinUNETR
-from utils import *
+from pipelineComponents import *
 import numpy as np
 
 class segmentationPipeline:
