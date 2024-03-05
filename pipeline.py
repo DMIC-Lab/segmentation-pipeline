@@ -65,7 +65,6 @@ class segmentationPipeline:
 
             return LROutput
 
-        originalImage *= 255
 
         leftOutput = torch.where(LROutput==1,1,0)
         rightOutput = torch.where(LROutput==2,1,0)
