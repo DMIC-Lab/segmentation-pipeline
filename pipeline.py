@@ -14,14 +14,14 @@ class segmentationPipeline:
             self.rightModelPath = weightPathOverrides[1]
         if weightPathOverrides[2] is not None:
             self.leftModelPath = weightPathOverrides[2]
-        self.LRModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=24)
-        self.LRModel.load_state_dict(torch.load(self.LRModelPath))
+        self.LRModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=12)
+        self.LRModel.load_state_dict(torch.load(self.LRModelPath,map_location=device))
         self.LRModel.eval()
         self.rightModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=4, feature_size=24)
-        self.rightModel.load_state_dict(torch.load(self.rightModelPath))
+        self.rightModel.load_state_dict(torch.load(self.rightModelPath,map_location=device))
         self.rightModel.eval()
         self.leftModel = SwinUNETR(img_size=(128,128,128), in_channels=1, out_channels=3, feature_size=24)
-        self.leftModel.load_state_dict(torch.load(self.leftModelPath))
+        self.leftModel.load_state_dict(torch.load(self.leftModelPath,map_location=device))
         self.leftModel.eval()
         self.device = device
         self.LRModel.to(self.device)
@@ -92,6 +92,9 @@ class segmentationPipeline:
         rightLobeOutput = torchGetModelOutput(rightInput,self.rightModel)       
         rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput, size=rightCropped.shape[2:], mode='nearest')
 
+        #return rightLobeOutput.squeeze(0).squeeze(0).cpu().numpy(), rightCropped.squeeze(0).squeeze(0).cpu().numpy()
+        #return leftLobeOutput.squeeze(0).squeeze(0).cpu().numpy(), leftCropped.squeeze(0).squeeze(0).cpu().numpy()
+
 
         #adjust right lobe output (0,1,2,3) to (0,3,4,5)
         rightLobeOutput = rightLobeOutput + 2
@@ -113,6 +116,8 @@ class segmentationPipeline:
         finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
         finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
 
+        #return finalMask.squeeze(0).squeeze(0).cpu().numpy()
+
         unevenShape = [False,False,False]
         if finalMask.shape[2] % 2 != 0:
             unevenShape[0] = True
@@ -126,7 +131,7 @@ class segmentationPipeline:
                 shape[i+2] += 1
         finalMask = torch.nn.functional.interpolate(finalMask, size=shape[2:], mode='nearest-exact')
 
-            
+        
             
         finalMask = torchErrors(finalMask)
         finalMask = torchDust(finalMask)
@@ -135,7 +140,7 @@ class segmentationPipeline:
 
         finalMask = finalMask.to(torch.uint8)
         
-        # if originalType == 'np':
-        #     return finalMask.squeeze(0).squeeze(0).cpu().numpy()
+        if originalType == 'np':
+            return finalMask.squeeze(0).squeeze(0).cpu().numpy()
 
         return finalMask
