@@ -1,0 +1,4 @@
+torch
+monai[einops]
+numpy
+scikit-image
