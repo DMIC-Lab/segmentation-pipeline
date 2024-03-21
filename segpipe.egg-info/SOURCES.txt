@@ -1,0 +1,13 @@
+MANIFEST.in
+setup.py
+segpipe/__init__.py
+segpipe/pipeline.py
+segpipe/pipelineComponents.py
+segpipe.egg-info/PKG-INFO
+segpipe.egg-info/SOURCES.txt
+segpipe.egg-info/dependency_links.txt
+segpipe.egg-info/requires.txt
+segpipe.egg-info/top_level.txt
+segpipe/weights/left.pt
+segpipe/weights/lr.pt
+segpipe/weights/right.pt

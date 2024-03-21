@@ -1,13 +1,14 @@
 import torch
 from monai.networks.nets import SwinUNETR
-from pipelineComponents import *
+from segpipe.pipelineComponents import *
 import numpy as np
+from pkg_resources import resource_filename
 
 class segmentationPipeline:
     def __init__(self,device,weightPathOverrides = [None,None,None]):
-        self.LRModelPath = "./weights/lr.pt"
-        self.rightModelPath = "./weights/right.pt"
-        self.leftModelPath = "./weights/left.pt"
+        self.LRModelPath = resource_filename(__name__,"weights/lr.pt")
+        self.rightModelPath = resource_filename(__name__,"weights/right.pt")
+        self.leftModelPath = resource_filename(__name__,"weights/left.pt")
         if weightPathOverrides[0] is not None:
             self.LRModelPath = weightPathOverrides[0]
         if weightPathOverrides[1] is not None:
@@ -116,7 +117,7 @@ class segmentationPipeline:
         finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
         finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
 
-        #return finalMask.squeeze(0).squeeze(0).cpu().numpy()
+        #return finalMask.squeeze(0).squeeze(#0).cpu().numpy()
 
         unevenShape = [False,False,False]
         if finalMask.shape[2] % 2 != 0:
