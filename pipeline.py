@@ -28,7 +28,7 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = False,takeLargest=False):
+    def segment(self,originalImage, getLR = 0,takeLargest=False):
         originalType = None
         if isinstance(originalImage, np.ndarray):
             originalImage = torch.from_numpy(np.array(originalImage)).float()
@@ -55,11 +55,11 @@ class segmentationPipeline:
         #Segment LR - LR model outputs mask of what is left and right lung
         LRInput = torchPrep(lrImage) #HWD -> NCHWD
         LROutput = torchGetModelOutput(LRInput,self.LRModel)
-        LROutput = torchDust(LROutput,threshold=1000,takeLargest=takeLargest)
+        LROutput = torchDust(LROutput,threshold=5000,takeLargest=takeLargest)
         LROutput = torch.nn.functional.interpolate(LROutput, size=originalImage.shape[2:], mode='nearest')
         
 
-        if getLR:
+        if getLR == 1:
             if originalType == 'np':
                 return LROutput.squeeze(0).squeeze(0).cpu().numpy()
 
@@ -141,6 +141,10 @@ class segmentationPipeline:
         finalMask = finalMask.to(torch.uint8)
         
         if originalType == 'np':
-            return finalMask.squeeze(0).squeeze(0).cpu().numpy()
+            finalMask = finalMask.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8)
+
+        if getLR == 2:
+            finalMask = np.where((finalMask == 1)|(finalMask == 2),1,finalMask)
+            finalMask = np.where((finalMask == 3)|(finalMask == 4)|(finalMask == 5),2,finalMask)
 
         return finalMask
