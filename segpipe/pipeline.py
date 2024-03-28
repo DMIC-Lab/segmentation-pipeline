@@ -29,7 +29,7 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False):
+    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False):
         originalType = None
         if isinstance(originalImage, np.ndarray):
             originalImage = torch.from_numpy(np.array(originalImage)).float()
@@ -116,7 +116,6 @@ class segmentationPipeline:
         rightFullSize[:,:,rightBounds[0]:rightBounds[1],rightBounds[2]:rightBounds[3],rightBounds[4]:rightBounds[5]] = rightLobeOutput
         finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
         finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
-
         #return finalMask.squeeze(0).squeeze(#0).cpu().numpy()
 
         unevenShape = [False,False,False]
@@ -131,14 +130,13 @@ class segmentationPipeline:
             if unevenShape[i]:
                 shape[i+2] += 1
         finalMask = torch.nn.functional.interpolate(finalMask, size=shape[2:], mode='nearest-exact')
-
-        
             
         finalMask = torchErrors(finalMask)
         finalMask = torchDust(finalMask)
-        finalMask = torchSmoothing(finalMask)
-        finalMask = torch.nn.functional.interpolate(finalMask, size=originalImage.shape[2:], mode='nearest-exact')
+        #finalMask = torchSmoothing(finalMask)
 
+        finalMask = torch.nn.functional.interpolate(finalMask, size=originalImage.shape[2:], mode='nearest-exact')
+        
         finalMask = finalMask.to(torch.uint8)
         
         if originalType == 'np':
