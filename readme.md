@@ -9,6 +9,7 @@ This Python module provides a simple-to-use interface for lung segmentation task
 - Numpy
 - Monai
 - Connected Components Labeling for Pytorch
+- OpenCV
 
 ## Installing Requirements
 Make a new environment and then install the following packages
@@ -31,7 +32,7 @@ Here's how to get started:
 First, import the `segmentationPipeline` from the pipeline:
 
 ```python
-from pipeline import segmentationPipeline
+from segpipe import segmentationPipeline
 ```
 
 ### Initializing the pipeline
@@ -50,7 +51,8 @@ pipeline = segmentationPipeline(device, weight_paths)
 ### Running the segmentation
 
 You can segment an image (as a PyTorch tensor or a Numpy array) of shape (N,C,H,W,D), N and C optional,  by calling the `segment` method:
-
+The model assumes the image is already oriented Inferior-Superior, Anterior-Posterior, Right-Left, scaled to 0 to 1 where 0 is air and 1 is water density.
+orient=True can be passed for the pipeline to attempt automatically processing the image accordingly.  
 ```python
 input_image = torch.rand((1, 1,512, 512, 512))  # Replace with your own image tensor
 
@@ -62,6 +64,12 @@ result_LR = pipeline.segment(input_image, getLR=1)
 
 # Lobe segmentation cast down to left and right lung
 result_cast_LR = pipeline.segment(input_image, getLR=2)
+
+#Orient and scale the image
+result = pipeline.segment(unprocessedImage, orient=True)
+
+#Orient and scale the image, returning the image alongside the resulting segmentation mask
+result, image = pipeline.segment(unprocessedImage, orient=True, returnImage=True)
 ```
 
 
@@ -78,5 +86,8 @@ result_cast_LR = pipeline.segment(input_image, getLR=2)
 - `segment(image, getLR)`: Segments the given image.
   - `image`: Input image as a PyTorch tensor or a Numpy array.
   - `getLR`: Determines the type of segmentation.
-    - `False`: Lobe Segmentation
-    - `True`: Left/Right Segmentation
+    - `0`: Lobe Segmentation
+    - `1`: Rough Left/Right Segmentation
+    - `2`: Left/Right Segmentation Derived from Lobes
+  - `orient`: Attempt automatic preprocessing of image
+  - `returnImage`: return input image alongside resulting segmentation mask

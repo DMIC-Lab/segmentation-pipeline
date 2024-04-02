@@ -3,6 +3,7 @@ from monai.networks.nets import SwinUNETR
 from segpipe.pipelineComponents import *
 import numpy as np
 from pkg_resources import resource_filename
+from segpipe.orient import orient
 
 class segmentationPipeline:
     def __init__(self,device,weightPathOverrides = [None,None,None]):
@@ -29,12 +30,21 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False):
+    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orient=True):
         originalType = None
         if isinstance(originalImage, np.ndarray):
-            originalImage = torch.from_numpy(np.array(originalImage)).float()
+            if orient:
+                originalImage = orient(originalImage)
+            if returnImage:
+                imageToReturn = originalImage
+            originalImage = torch.from_numpy(originalImage).float()
             originalType = 'np'
         elif isinstance(originalImage, torch.Tensor):
+            if orient:
+                originalImage = orient(originalImage.cpu().numpy())
+                originalImage = torch.tensor(originalImage)
+            if returnImage:
+                imageToReturn = originalImage
             originalImage = originalImage.float()
         else:
             raise TypeError("Input must be numpy array or torch tensor")
@@ -49,7 +59,6 @@ class segmentationPipeline:
             raise ValueError("Input must be 3D, 4D, or 5D tensor")
         
         originalImage = originalImage.to(self.device)
-        originalImage = (originalImage - torch.min(originalImage)) / (torch.max(originalImage) - torch.min(originalImage))
 
         lrImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest')
         
@@ -62,8 +71,11 @@ class segmentationPipeline:
 
         if getLR == 1:
             if originalType == 'np':
+                if returnImage:
+                    return LROutput.squeeze(0).squeeze(0).cpu().numpy(), imageToReturn
                 return LROutput.squeeze(0).squeeze(0).cpu().numpy()
-
+            if returnImage:
+                return LROutput, imageToReturn
             return LROutput
 
 
@@ -140,10 +152,14 @@ class segmentationPipeline:
         finalMask = finalMask.to(torch.uint8)
         
         if originalType == 'np':
+            if returnImage:
+                return finalMask.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8), imageToReturn
             finalMask = finalMask.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8)
 
         if getLR == 2:
             finalMask = np.where((finalMask == 1)|(finalMask == 2),1,finalMask)
             finalMask = np.where((finalMask == 3)|(finalMask == 4)|(finalMask == 5),2,finalMask)
 
+        if returnImage:
+            return finalMask, imageToReturn
         return finalMask

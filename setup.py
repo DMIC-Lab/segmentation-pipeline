@@ -11,10 +11,15 @@ setup(
     package_data={
         '': ['weights/*'],
     },
+    extras_require={
+        'full': ['opencv-python'],
+        'headless': ['opencv-python-headless']
+    },
     install_requires=[
         'torch',
         'monai[einops]',
         'numpy',
-        'scikit-image'
+        'scikit-image',
+        'opencv-python-headless'
     ],
 )
