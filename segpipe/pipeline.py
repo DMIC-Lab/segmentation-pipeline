@@ -30,17 +30,17 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orient=True):
+    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=True):
         originalType = None
         if isinstance(originalImage, np.ndarray):
-            if orient:
+            if orientImage:
                 originalImage = orient(originalImage)
             if returnImage:
                 imageToReturn = originalImage
             originalImage = torch.from_numpy(originalImage).float()
             originalType = 'np'
         elif isinstance(originalImage, torch.Tensor):
-            if orient:
+            if orientImage:
                 originalImage = orient(originalImage.cpu().numpy())
                 originalImage = torch.tensor(originalImage)
             if returnImage:
