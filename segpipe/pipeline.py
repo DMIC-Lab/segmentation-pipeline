@@ -30,7 +30,7 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=True):
+    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=False):
         originalType = None
         if isinstance(originalImage, np.ndarray):
             if orientImage:
@@ -81,10 +81,23 @@ class segmentationPipeline:
 
         leftOutput = torch.where(LROutput==1,1,0)
         rightOutput = torch.where(LROutput==2,1,0)
-        leftBounds = torchbbox2_3D(leftOutput,margin=1)
-        rightBounds = torchbbox2_3D(rightOutput,margin=1)
-        leftCropped = torchCrop(originalImage,leftBounds)
-        rightCropped = torchCrop(originalImage,rightBounds)
+        if torch.sum(leftOutput) == 0:
+            leftOutput = None
+        if torch.sum(rightOutput) == 0:
+            rightOutput = None
+        if leftOutput is None and rightOutput is None:
+            print("No lungs detected")
+            return None
+        if leftOutput is not None:
+            leftBounds = torchbbox2_3D(leftOutput,margin=1)
+            leftCropped = torchCrop(originalImage,leftBounds)
+        else:
+            leftCropped = None
+        if rightOutput is not None:
+            rightBounds = torchbbox2_3D(rightOutput,margin=1)
+            rightCropped = torchCrop(originalImage,rightBounds)
+        else:
+            rightCropped = None
 
         # debug = torch.zeros(originalImage.shape).cuda()
         # debug[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = 255
@@ -95,40 +108,38 @@ class segmentationPipeline:
 
 
 
+        if leftCropped is not None:
+            # Get and post-process left lobe model output
+            leftInput = torchPrep(leftCropped)
+            leftLobeOutput = torchGetModelOutput(leftInput,self.leftModel)
+            leftLobeOutput = torch.nn.functional.interpolate(leftLobeOutput, size=leftCropped.shape[2:], mode='nearest')
+            temp = torch.zeros_like(leftLobeOutput)
+            temp[:,:,:-1,:-1,:-1] = leftLobeOutput[:,:,1:,1:,1:]
+            leftLobeOutput = temp
+        if rightCropped is not None:
+            # Get and post-process right lobe model output
+            rightInput = torchPrep(rightCropped)
+            rightLobeOutput = torchGetModelOutput(rightInput,self.rightModel)       
+            rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput, size=rightCropped.shape[2:], mode='nearest')
 
-        # Get and post-process left lobe model output
-        leftInput = torchPrep(leftCropped)
-        leftLobeOutput = torchGetModelOutput(leftInput,self.leftModel)
-        leftLobeOutput = torch.nn.functional.interpolate(leftLobeOutput, size=leftCropped.shape[2:], mode='nearest')
-        # Get and post-process right lobe model output
-        rightInput = torchPrep(rightCropped)
-        rightLobeOutput = torchGetModelOutput(rightInput,self.rightModel)       
-        rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput, size=rightCropped.shape[2:], mode='nearest')
-
-        #return rightLobeOutput.squeeze(0).squeeze(0).cpu().numpy(), rightCropped.squeeze(0).squeeze(0).cpu().numpy()
-        #return leftLobeOutput.squeeze(0).squeeze(0).cpu().numpy(), leftCropped.squeeze(0).squeeze(0).cpu().numpy()
-
-
-        #adjust right lobe output (0,1,2,3) to (0,3,4,5)
-        rightLobeOutput = rightLobeOutput + 2
-        rightLobeOutput = torch.where(rightLobeOutput==2,0,rightLobeOutput)
+            #adjust right lobe output (0,1,2,3) to (0,3,4,5)
+            rightLobeOutput = rightLobeOutput + 2
+            rightLobeOutput = torch.where(rightLobeOutput==2,0,rightLobeOutput)
+            temp = torch.zeros_like(rightLobeOutput)
+            temp[:,:,:-1,:-1,:-1] = rightLobeOutput[:,:,1:,1:,1:]
+            rightLobeOutput = temp
         
-        temp = torch.zeros_like(leftLobeOutput)
-        temp[:,:,:-1,:-1,:-1] = leftLobeOutput[:,:,1:,1:,1:]
-        leftLobeOutput = temp
-        temp = torch.zeros_like(rightLobeOutput)
-        temp[:,:,:-1,:-1,:-1] = rightLobeOutput[:,:,1:,1:,1:]
-        rightLobeOutput = temp
 
         #Assemble final mask
         finalMask = torch.zeros(originalImage.shape).cuda()
         leftFullSize = torch.zeros(originalImage.shape).cuda()
         rightFullSize = torch.zeros(originalImage.shape).cuda()
-        leftFullSize[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = leftLobeOutput
-        rightFullSize[:,:,rightBounds[0]:rightBounds[1],rightBounds[2]:rightBounds[3],rightBounds[4]:rightBounds[5]] = rightLobeOutput
-        finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
-        finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
-        #return finalMask.squeeze(0).squeeze(#0).cpu().numpy()
+        if leftCropped is not None:
+            leftFullSize[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = leftLobeOutput
+            finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
+        if rightCropped is not None:
+            rightFullSize[:,:,rightBounds[0]:rightBounds[1],rightBounds[2]:rightBounds[3],rightBounds[4]:rightBounds[5]] = rightLobeOutput
+            finalMask = torch.where(rightFullSize > 0, rightFullSize, finalMask)
 
         unevenShape = [False,False,False]
         if finalMask.shape[2] % 2 != 0:
