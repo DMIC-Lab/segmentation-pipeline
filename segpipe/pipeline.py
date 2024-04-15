@@ -30,7 +30,7 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=False):
+    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=False,postprocess=False):
         originalType = None
         if isinstance(originalImage, np.ndarray):
             if orientImage:
@@ -153,8 +153,8 @@ class segmentationPipeline:
             if unevenShape[i]:
                 shape[i+2] += 1
         finalMask = torch.nn.functional.interpolate(finalMask, size=shape[2:], mode='nearest-exact')
-            
-        finalMask = torchErrors(finalMask)
+        if postprocess:
+            finalMask = torchErrors(finalMask)
         finalMask = torchDust(finalMask)
         #finalMask = torchSmoothing(finalMask)
 
