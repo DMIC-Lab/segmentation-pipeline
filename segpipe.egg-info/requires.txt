@@ -2,3 +2,10 @@ torch
 monai[einops]
 numpy
 scikit-image
+opencv-python-headless
+
+[full]
+opencv-python
+
+[headless]
+opencv-python-headless

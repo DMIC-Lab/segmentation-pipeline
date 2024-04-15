@@ -59,6 +59,13 @@ class segmentationPipeline:
             raise ValueError("Input must be 3D, 4D, or 5D tensor")
         
         originalImage = originalImage.to(self.device)
+        im = torch.sum(originalImage,dim=2).unsqueeze(2)
+        im = im.repeat(1,1,originalImage.shape[2],1,1)
+        im = torch.nn.functional.interpolate(im,size=(128,128,128),mode='nearest')
+        eroded = pytorchBinaryErosion((im/torch.max(im)) > .5,selem_radius=3)
+        dilated = pytorchBinaryDilation(eroded,selem_radius=3)
+        dusted = torch.nn.functional.interpolate(dilated.to(torch.uint8),size=(originalImage.shape[2],originalImage.shape[3],originalImage.shape[4]),mode='nearest')
+        originalImage = torch.where(dusted > 0, originalImage, torch.zeros_like(originalImage))
 
         lrImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest')
         
