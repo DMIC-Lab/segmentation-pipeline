@@ -67,6 +67,7 @@ def torchMorphology(smallTensor):
     return finalTensor
 
 def torchbbox2_3D(img,margin=5):
+    img = img.type(bool)
     if len(img.shape) > 3:
         for i in range(len(img.shape)-3):
             img = img.squeeze(0)
