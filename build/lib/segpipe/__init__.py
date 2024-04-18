@@ -1,1 +1,0 @@
-from segpipe.pipeline import segmentationPipeline
