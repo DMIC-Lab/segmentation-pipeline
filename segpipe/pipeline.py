@@ -138,9 +138,9 @@ class segmentationPipeline:
         
 
         #Assemble final mask
-        finalMask = torch.zeros(originalImage.shape).cuda()
-        leftFullSize = torch.zeros(originalImage.shape).cuda()
-        rightFullSize = torch.zeros(originalImage.shape).cuda()
+        finalMask = torch.zeros(originalImage.shape).cuda().int()
+        leftFullSize = torch.zeros(originalImage.shape).cuda().int()
+        rightFullSize = torch.zeros(originalImage.shape).cuda().int()
         if leftCropped is not None:
             leftFullSize[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = leftLobeOutput
             finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
