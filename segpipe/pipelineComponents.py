@@ -44,7 +44,7 @@ def torchGetModelOutput(input,model):
         output = model(input)
         output = softmax(output)
         output = torch.argmax(output,dim=1).unsqueeze(0)
-    return output.int()
+    return output.long()
 
 def pytorchBinaryErosion(tensor, selem_radius=3):
     ball = morphology.ball(selem_radius)
