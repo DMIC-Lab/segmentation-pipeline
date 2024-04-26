@@ -159,13 +159,13 @@ class segmentationPipeline:
         for i in range(3):
             if unevenShape[i]:
                 shape[i+2] += 1
-        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=shape[2:], mode='nearest').long()
+        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=shape[2:], mode='nearest-exact').long()
         if postprocess:
             finalMask = torchErrors(finalMask)
         finalMask = torchDust(finalMask)
         #finalMask = torchSmoothing(finalMask)
 
-        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=originalImage.shape[2:], mode='nearest').long()
+        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=originalImage.shape[2:], mode='nearest-exact').long()
         
         finalMask = finalMask.to(torch.uint8)
         
