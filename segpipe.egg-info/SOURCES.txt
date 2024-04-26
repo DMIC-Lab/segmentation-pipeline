@@ -1,7 +1,6 @@
 MANIFEST.in
 setup.py
 segpipe/__init__.py
-segpipe/orient.py
 segpipe/pipeline.py
 segpipe/pipelineComponents.py
 segpipe.egg-info/PKG-INFO

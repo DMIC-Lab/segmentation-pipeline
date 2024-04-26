@@ -20,6 +20,7 @@ setup(
         'monai[einops]',
         'numpy',
         'scikit-image',
-        'opencv-python-headless'
+        'opencv-python-headless',
+        'connected-components-3d',
     ],
 )

@@ -3,6 +3,7 @@ monai[einops]
 numpy
 scikit-image
 opencv-python-headless
+connected-components-3d
 
 [full]
 opencv-python

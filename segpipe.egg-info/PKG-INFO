@@ -8,6 +8,7 @@ Requires-Dist: monai[einops]
 Requires-Dist: numpy
 Requires-Dist: scikit-image
 Requires-Dist: opencv-python-headless
+Requires-Dist: connected-components-3d
 Provides-Extra: full
 Requires-Dist: opencv-python; extra == "full"
 Provides-Extra: headless

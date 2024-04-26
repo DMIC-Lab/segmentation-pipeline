@@ -1,9 +1,11 @@
 import torch
 from monai.networks.nets import SwinUNETR
-from segpipe.pipelineComponents import *
+
+
+
+from segpipe.pipelineComponents import dust, getModelOutput,binaryErosion,bbox_3D,prep,binaryDilation,crop,fallback
 import numpy as np
 from pkg_resources import resource_filename
-from segpipe.orient import orient
 
 class segmentationPipeline:
     def __init__(self,device,weightPathOverrides = [None,None,None]):
@@ -30,21 +32,12 @@ class segmentationPipeline:
         self.rightModel.to(self.device)
         self.leftModel.to(self.device)
     
-    def segment(self,originalImage, getLR = 0,takeLargest=False, debug = False, returnImage= False, orientImage=False,postprocess=False):
+    def segment(self,originalImage, getLR = 0, numpyDust = False):
         originalType = None
         if isinstance(originalImage, np.ndarray):
-            if orientImage:
-                originalImage = orient(originalImage)
-            if returnImage:
-                imageToReturn = originalImage
             originalImage = torch.from_numpy(originalImage).float()
             originalType = 'np'
         elif isinstance(originalImage, torch.Tensor):
-            if orientImage:
-                originalImage = orient(originalImage.cpu().numpy())
-                originalImage = torch.tensor(originalImage)
-            if returnImage:
-                imageToReturn = originalImage
             originalImage = originalImage.float()
         else:
             raise TypeError("Input must be numpy array or torch tensor")
@@ -62,27 +55,26 @@ class segmentationPipeline:
         im = torch.sum(originalImage,dim=2).unsqueeze(2)
         im = im.repeat(1,1,originalImage.shape[2],1,1)
         im = torch.nn.functional.interpolate(im,size=(128,128,128),mode='nearest')
-        eroded = pytorchBinaryErosion((im/torch.max(im)) > .2,selem_radius=3)
-        dilated = pytorchBinaryDilation(eroded,selem_radius=3)
-        dusted = torch.nn.functional.interpolate(dilated.to(torch.uint8),size=(originalImage.shape[2],originalImage.shape[3],originalImage.shape[4]),mode='nearest')
-        originalImage = torch.where(dusted > 0, originalImage, torch.zeros_like(originalImage))
+        eroded = binaryErosion((im/torch.max(im)) > .2,selem_radius=3)
+        dilated = binaryDilation(eroded,selem_radius=3)
+        dilated = torch.nn.functional.interpolate(dilated.to(torch.uint8),size=(originalImage.shape[2],originalImage.shape[3],originalImage.shape[4]),mode='nearest')
+        originalImage = torch.where(dilated > 0, originalImage, torch.zeros_like(originalImage))
 
         lrImage = torch.nn.functional.interpolate(originalImage,size=(128,128,128),mode='nearest')
         
         #Segment LR - LR model outputs mask of what is left and right lung
-        LRInput = torchPrep(lrImage) #HWD -> NCHWD
-        LROutput = torchGetModelOutput(LRInput,self.LRModel)
-        LROutput = torchDust(LROutput,threshold=5000,takeLargest=takeLargest)
+        LRInput = prep(lrImage) #HWD -> NCHWD
+        LROutput = getModelOutput(LRInput,self.LRModel)
+        if numpyDust:
+            LROutput = fallback(LROutput,device = self.device,threshold=5000)
+        else:
+            LROutput = dust(LROutput,device = self.device,threshold=5000)
         LROutput = torch.nn.functional.interpolate(LROutput, size=originalImage.shape[2:], mode='nearest')
         
 
         if getLR == 1:
             if originalType == 'np':
-                if returnImage:
-                    return LROutput.squeeze(0).squeeze(0).cpu().numpy(), imageToReturn
                 return LROutput.squeeze(0).squeeze(0).cpu().numpy()
-            if returnImage:
-                return LROutput, imageToReturn
             return LROutput
 
 
@@ -96,13 +88,13 @@ class segmentationPipeline:
             print("No lungs detected")
             return None
         if leftOutput is not None:
-            leftBounds = torchbbox2_3D(leftOutput,margin=1)
-            leftCropped = torchCrop(originalImage,leftBounds)
+            leftBounds = bbox_3D(leftOutput,margin=1)
+            leftCropped = crop(originalImage,leftBounds)
         else:
             leftCropped = None
         if rightOutput is not None:
-            rightBounds = torchbbox2_3D(rightOutput,margin=1)
-            rightCropped = torchCrop(originalImage,rightBounds)
+            rightBounds = bbox_3D(rightOutput,margin=1)
+            rightCropped = crop(originalImage,rightBounds)
         else:
             rightCropped = None
 
@@ -117,16 +109,16 @@ class segmentationPipeline:
 
         if leftCropped is not None:
             # Get and post-process left lobe model output
-            leftInput = torchPrep(leftCropped)
-            leftLobeOutput = torchGetModelOutput(leftInput,self.leftModel)
+            leftInput = prep(leftCropped)
+            leftLobeOutput = getModelOutput(leftInput,self.leftModel)
             leftLobeOutput = torch.nn.functional.interpolate(leftLobeOutput, size=leftCropped.shape[2:], mode='nearest')
             temp = torch.zeros_like(leftLobeOutput)
             temp[:,:,:-1,:-1,:-1] = leftLobeOutput[:,:,1:,1:,1:]
             leftLobeOutput = temp
         if rightCropped is not None:
             # Get and post-process right lobe model output
-            rightInput = torchPrep(rightCropped)
-            rightLobeOutput = torchGetModelOutput(rightInput,self.rightModel)       
+            rightInput = prep(rightCropped)
+            rightLobeOutput = getModelOutput(rightInput,self.rightModel)       
             rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput, size=rightCropped.shape[2:], mode='nearest')
 
             #adjust right lobe output (0,1,2,3) to (0,3,4,5)
@@ -160,24 +152,20 @@ class segmentationPipeline:
             if unevenShape[i]:
                 shape[i+2] += 1
         finalMask = torch.nn.functional.interpolate(finalMask, size=shape[2:], mode='nearest-exact')
-        if postprocess:
-            finalMask = torchErrors(finalMask)
-        finalMask = torchDust(finalMask)
-        #finalMask = torchSmoothing(finalMask)
+        if numpyDust:
+            finalMask = fallback(finalMask,device=self.device)
+        else:
+            finalMask = dust(finalMask,device=self.device)
 
         finalMask = torch.nn.functional.interpolate(finalMask, size=originalImage.shape[2:], mode='nearest-exact')
         
         finalMask = finalMask.to(torch.uint8)
         
         if originalType == 'np':
-            if returnImage:
-                return finalMask.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8), imageToReturn
             finalMask = finalMask.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8)
 
         if getLR == 2:
             finalMask = np.where((finalMask == 1)|(finalMask == 2),1,finalMask)
             finalMask = np.where((finalMask == 3)|(finalMask == 4)|(finalMask == 5),2,finalMask)
 
-        if returnImage:
-            return finalMask, imageToReturn
         return finalMask
