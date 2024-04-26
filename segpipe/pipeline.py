@@ -73,7 +73,7 @@ class segmentationPipeline:
         LRInput = torchPrep(lrImage) #HWD -> NCHWD
         LROutput = torchGetModelOutput(LRInput,self.LRModel)
         LROutput = torchDust(LROutput,threshold=5000,takeLargest=takeLargest)
-        LROutput = torch.nn.functional.interpolate(LROutput.float(), size=originalImage.shape[2:], mode='nearest').long()
+        LROutput = torch.nn.functional.interpolate(LROutput.float(), size=originalImage.shape[2:], mode='nearest').int()
         
 
         if getLR == 1:
@@ -119,7 +119,7 @@ class segmentationPipeline:
             # Get and post-process left lobe model output
             leftInput = torchPrep(leftCropped)
             leftLobeOutput = torchGetModelOutput(leftInput,self.leftModel)
-            leftLobeOutput = torch.nn.functional.interpolate(leftLobeOutput.float(), size=leftCropped.shape[2:], mode='nearest').long()
+            leftLobeOutput = torch.nn.functional.interpolate(leftLobeOutput.float(), size=leftCropped.shape[2:], mode='nearest').int()
             temp = torch.zeros_like(leftLobeOutput)
             temp[:,:,:-1,:-1,:-1] = leftLobeOutput[:,:,1:,1:,1:]
             leftLobeOutput = temp
@@ -127,7 +127,7 @@ class segmentationPipeline:
             # Get and post-process right lobe model output
             rightInput = torchPrep(rightCropped)
             rightLobeOutput = torchGetModelOutput(rightInput,self.rightModel)       
-            rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput.float(), size=rightCropped.shape[2:], mode='nearest').long()
+            rightLobeOutput = torch.nn.functional.interpolate(rightLobeOutput.float(), size=rightCropped.shape[2:], mode='nearest').int()
 
             #adjust right lobe output (0,1,2,3) to (0,3,4,5)
             rightLobeOutput = rightLobeOutput + 2
@@ -138,9 +138,9 @@ class segmentationPipeline:
         
 
         #Assemble final mask
-        finalMask = torch.zeros(originalImage.shape).cuda().long()
-        leftFullSize = torch.zeros(originalImage.shape).cuda().long()
-        rightFullSize = torch.zeros(originalImage.shape).cuda().long()
+        finalMask = torch.zeros(originalImage.shape).cuda().int()
+        leftFullSize = torch.zeros(originalImage.shape).cuda().int()
+        rightFullSize = torch.zeros(originalImage.shape).cuda().int()
         if leftCropped is not None:
             leftFullSize[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = leftLobeOutput
             finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
@@ -159,13 +159,13 @@ class segmentationPipeline:
         for i in range(3):
             if unevenShape[i]:
                 shape[i+2] += 1
-        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=shape[2:], mode='nearest-exact').long()
+        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=shape[2:], mode='nearest-exact').int()
         if postprocess:
             finalMask = torchErrors(finalMask)
         finalMask = torchDust(finalMask)
         #finalMask = torchSmoothing(finalMask)
 
-        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=originalImage.shape[2:], mode='nearest-exact').long()
+        finalMask = torch.nn.functional.interpolate(finalMask.float(), size=originalImage.shape[2:], mode='nearest-exact').int()
         
         finalMask = finalMask.to(torch.uint8)
         
