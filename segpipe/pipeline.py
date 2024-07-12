@@ -88,12 +88,12 @@ class segmentationPipeline:
             print("No lungs detected")
             return None
         if leftOutput is not None:
-            leftBounds = bbox_3D(leftOutput,margin=1)
+            leftBounds = bbox_3D(leftOutput,margin=5)
             leftCropped = crop(originalImage,leftBounds)
         else:
             leftCropped = None
         if rightOutput is not None:
-            rightBounds = bbox_3D(rightOutput,margin=1)
+            rightBounds = bbox_3D(rightOutput,margin=5)
             rightCropped = crop(originalImage,rightBounds)
         else:
             rightCropped = None
