@@ -31,14 +31,14 @@ try:
             dusted = dusted.unsqueeze(0)
         return dusted
     
-    def fallback(arr,threshold=3000,device=None):
-        return torch.tensor(cc3d.dust(arr.squeeze().cpu().numpy(), threshold=threshold, connectivity=26)).float().to(device).unsqueeze(0).unsqueeze(0)
 except ImportError:
     import cc3d
     def dust(arr, device, threshold=3000):
         return torch.tensor(cc3d.dust(arr.squeeze().cpu().numpy(), threshold=threshold, connectivity=26)).float().to(device).unsqueeze(0).unsqueeze(0)
     
 
+def fallback(arr,threshold=3000,device=None):
+    return torch.tensor(cc3d.dust(arr.squeeze().cpu().numpy(), threshold=threshold, connectivity=26)).float().to(device).unsqueeze(0).unsqueeze(0)
 
 def getModelOutput(input,model):
     softmax = torch.nn.Softmax(dim=1)
@@ -48,10 +48,10 @@ def getModelOutput(input,model):
         output = torch.argmax(output,dim=1).unsqueeze(0)
     return output.to(torch.uint8)
 
-def binaryErosion(tensor, selem_radius=3):
+def binaryErosion(tensor,selem_radius=3):
     ball = morphology.ball(selem_radius)
     struct_elem = torch.tensor(ball, dtype=torch.float32)
-    struct_elem = struct_elem.view(1, 1, *struct_elem.size()).cuda()
+    struct_elem = struct_elem.view(1, 1, *struct_elem.size()).to(tensor.device)
 
     # Perform 3D convolution with structuring element
     conv_result = torch.nn.functional.conv3d(tensor.float(), struct_elem, padding=selem_radius)
@@ -86,10 +86,10 @@ def prep(image):
     image = torch.nn.functional.interpolate(image,size=(128,128,128),mode='nearest')
     return image
 
-def binaryDilation(tensor, selem_radius=3):
+def binaryDilation(tensor,selem_radius=3):
     ball = morphology.ball(selem_radius)
     struct_elem = torch.tensor(ball, dtype=torch.float32)
-    struct_elem = struct_elem.view(1, 1, *struct_elem.size()).cuda()
+    struct_elem = struct_elem.view(1, 1, *struct_elem.size()).to(tensor.device)
 
     # Perform 3D convolution with structuring element
     conv_result = torch.nn.functional.conv3d(tensor.float(), struct_elem, padding=selem_radius)

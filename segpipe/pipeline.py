@@ -98,13 +98,6 @@ class segmentationPipeline:
         else:
             rightCropped = None
 
-        # debug = torch.zeros(originalImage.shape).cuda()
-        # debug[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = 255
-        # debug[:,:,rightBounds[0]:rightBounds[1],rightBounds[2]:rightBounds[3],rightBounds[4]:rightBounds[5]] = 255
-        # debug = debug.to(torch.uint8).squeeze(0).squeeze(0)
-        # debug = debug.cpu().numpy()
-        # return debug
-
 
 
         if leftCropped is not None:
@@ -130,9 +123,9 @@ class segmentationPipeline:
         
 
         #Assemble final mask
-        finalMask = torch.zeros(originalImage.shape).cuda()
-        leftFullSize = torch.zeros(originalImage.shape).cuda()
-        rightFullSize = torch.zeros(originalImage.shape).cuda()
+        finalMask = torch.zeros(originalImage.shape).to(self.device)
+        leftFullSize = torch.zeros(originalImage.shape).to(self.device)
+        rightFullSize = torch.zeros(originalImage.shape).to(self.device)
         if leftCropped is not None:
             leftFullSize[:,:,leftBounds[0]:leftBounds[1],leftBounds[2]:leftBounds[3],leftBounds[4]:leftBounds[5]] = leftLobeOutput
             finalMask = torch.where(leftFullSize > 0, leftFullSize, finalMask)
