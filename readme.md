@@ -1,4 +1,4 @@
-# Lung Segmentation Pipeline
+# TriSwinUNETR-lobeseg
 
 This Python module provides a simple-to-use interface for lung segmentation tasks using deep learning. Specifically, this module includes a class `segmentationPipeline` that allows for the segmentation of lung lobes and left-right lung separation.
 
