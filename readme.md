@@ -54,7 +54,7 @@ pipeline = segmentationPipeline(device, weight_paths)
 
 ### Running the segmentation
 
-You can segment an image (as a PyTorch tensor or a Numpy array) of shape (N,C,H,W,D), N and C optional,  by calling the `segment` method:
+You can segment an image (as a PyTorch tensor or a Numpy array) of shape (N,C,H,W,D), N and C optional, by calling the `segment` method:
 The model assumes the image is already oriented Inferior-Superior, Anterior-Posterior, Right-Left, scaled to 0 to 1 where 0 is air and 1 is water density.
 ```python
 input_image = torch.rand((1, 1,512, 512, 512))  # Replace with your own image tensor
